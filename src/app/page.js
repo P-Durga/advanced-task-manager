@@ -3,10 +3,13 @@
 import { useState, useEffect, useCallback, useMemo, useReducer } from 'react';
 import { Plus, Search, Calendar } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { useTheme } from '@/context/ThemeContext';
 import { useNotification } from '@/context/NotificationContext';
 import { tasksReducer } from '@/reducers/tasksReducer';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorAlert } from '@/components/ErrorAlert';
+import { LoadingState } from '@/components/LoadingState';
 import { Header } from '@/components/Layout/Header';
 import { Notifications } from '@/components/Layout/Notifications';
 import { Statistics } from '@/components/Statistics/Statistics';
@@ -20,104 +23,222 @@ export default function Home() {
   const [tasks, dispatch] = useReducer(tasksReducer, []);
   const { theme } = useTheme();
   const { addNotification } = useNotification();
+  const { error, handleAsyncError, clearError } = useErrorHandler();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterPriority, setFilterPriority] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [isLoading, setIsLoading] = useState(true);
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
-  // Initialize with sample tasks
+  // Initialize with sample tasks with error handling
   useEffect(() => {
-    const sampleTasks = [
-      { 
-        id: '1', 
-        title: 'Complete project documentation', 
-        description: 'Write comprehensive docs', 
-        priority: 'high', 
-        category: 'work', 
-        completed: false 
-      },
-      { 
-        id: '2', 
-        title: 'Review pull requests', 
-        description: 'Check team PRs', 
-        priority: 'medium', 
-        category: 'work', 
-        completed: false 
-      },
-      { 
-        id: '3', 
-        title: 'Grocery shopping', 
-        description: 'Buy weekly groceries', 
-        priority: 'low', 
-        category: 'shopping', 
-        completed: true 
-      },
-      { 
-        id: '4', 
-        title: 'Gym workout', 
-        description: '1 hour cardio', 
-        priority: 'medium', 
-        category: 'health', 
-        completed: false 
-      },
-    ];
-    dispatch({ type: 'SET_TASKS', payload: sampleTasks });
-  }, []);
+    const initializeTasks = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Simulate API call delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        const sampleTasks = [
+          { 
+            id: '1', 
+            title: 'Complete project documentation', 
+            description: 'Write comprehensive docs', 
+            priority: 'high', 
+            category: 'work', 
+            completed: false 
+          },
+          { 
+            id: '2', 
+            title: 'Review pull requests', 
+            description: 'Check team PRs', 
+            priority: 'medium', 
+            category: 'work', 
+            completed: false 
+          },
+          { 
+            id: '3', 
+            title: 'Grocery shopping', 
+            description: 'Buy weekly groceries', 
+            priority: 'low', 
+            category: 'shopping', 
+            completed: true 
+          },
+          { 
+            id: '4', 
+            title: 'Gym workout', 
+            description: '1 hour cardio', 
+            priority: 'medium', 
+            category: 'health', 
+            completed: false 
+          },
+        ];
+
+        dispatch({ type: 'SET_TASKS', payload: sampleTasks });
+      } catch (err) {
+        await handleAsyncError(
+          Promise.reject(err), 
+          'Failed to load tasks'
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeTasks();
+  }, [handleAsyncError]);
 
   const filteredTasks = useMemo(() => {
-    return tasks.filter(task => {
-      const matchesSearch = task.title.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-                           task.description.toLowerCase().includes(debouncedSearch.toLowerCase());
-      const matchesPriority = filterPriority === 'all' || task.priority === filterPriority;
-      const matchesCategory = filterCategory === 'all' || task.category === filterCategory;
-      return matchesSearch && matchesPriority && matchesCategory;
-    });
+    try {
+      return tasks.filter(task => {
+        const matchesSearch = task.title.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+                             task.description.toLowerCase().includes(debouncedSearch.toLowerCase());
+        const matchesPriority = filterPriority === 'all' || task.priority === filterPriority;
+        const matchesCategory = filterCategory === 'all' || task.category === filterCategory;
+        return matchesSearch && matchesPriority && matchesCategory;
+      });
+    } catch (err) {
+      console.error('Error filtering tasks:', err);
+      return tasks;
+    }
   }, [tasks, debouncedSearch, filterPriority, filterCategory]);
 
-  const handleAddTask = useCallback((formData) => {
-    const newTask = {
-      id: Date.now().toString(),
-      ...formData,
-      completed: false
-    };
-    dispatch({ type: 'ADD_TASK', payload: newTask });
-    setIsModalOpen(false);
-    addNotification('Task added successfully!');
-  }, [addNotification]);
+  const handleAddTask = useCallback(async (formData) => {
+    const { data, error } = await handleAsyncError(
+      new Promise((resolve, reject) => {
+        try {
+          const newTask = {
+            id: Date.now().toString(),
+            ...formData,
+            completed: false,
+            createdAt: new Date().toISOString(),
+          };
+          
+          dispatch({ type: 'ADD_TASK', payload: newTask });
+          resolve(newTask);
+        } catch (err) {
+          reject(err);
+        }
+      }),
+      'Adding task'
+    );
 
-  const handleUpdateTask = useCallback((formData) => {
-    dispatch({ 
-      type: 'UPDATE_TASK', 
-      payload: { id: editingTask.id, updates: formData }
-    });
-    setIsModalOpen(false);
-    setEditingTask(null);
-    addNotification('Task updated successfully!');
-  }, [editingTask, addNotification]);
+    if (!error) {
+      setIsModalOpen(false);
+      addNotification('Task added successfully!');
+    }
+  }, [handleAsyncError, addNotification]);
 
-  const handleDeleteTask = useCallback((id) => {
-    dispatch({ type: 'DELETE_TASK', payload: id });
-    addNotification('Task deleted!');
-  }, [addNotification]);
+  const handleUpdateTask = useCallback(async (formData) => {
+    const { data, error } = await handleAsyncError(
+      new Promise((resolve, reject) => {
+        try {
+          if (!editingTask) {
+            throw new Error('No task selected for editing');
+          }
+          
+          dispatch({ 
+            type: 'UPDATE_TASK', 
+            payload: { 
+              id: editingTask.id, 
+              updates: {
+                ...formData,
+                updatedAt: new Date().toISOString(),
+              }
+            }
+          });
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      }),
+      'Updating task'
+    );
 
-  const handleToggleTask = useCallback((id) => {
-    dispatch({ type: 'TOGGLE_TASK', payload: id });
-  }, []);
+    if (!error) {
+      setIsModalOpen(false);
+      setEditingTask(null);
+      addNotification('Task updated successfully!');
+    }
+  }, [editingTask, handleAsyncError, addNotification]);
+
+  const handleDeleteTask = useCallback(async (id) => {
+    // Confirmation dialog
+    if (!confirm('Are you sure you want to delete this task?')) {
+      return;
+    }
+
+    const { error } = await handleAsyncError(
+      new Promise((resolve, reject) => {
+        try {
+          dispatch({ type: 'DELETE_TASK', payload: id });
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      }),
+      'Deleting task'
+    );
+
+    if (!error) {
+      addNotification('Task deleted successfully!');
+    }
+  }, [handleAsyncError, addNotification]);
+
+  const handleToggleTask = useCallback(async (id) => {
+    const { error } = await handleAsyncError(
+      new Promise((resolve, reject) => {
+        try {
+          dispatch({ type: 'TOGGLE_TASK', payload: id });
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      }),
+      'Toggling task'
+    );
+
+    if (error) {
+      console.error('Failed to toggle task:', error);
+    }
+  }, [handleAsyncError]);
 
   const handleEditTask = useCallback((task) => {
-    setEditingTask(task);
-    setIsModalOpen(true);
-  }, []);
+    try {
+      if (!task || !task.id) {
+        throw new Error('Invalid task data');
+      }
+      setEditingTask(task);
+      setIsModalOpen(true);
+    } catch (err) {
+      console.error('Error editing task:', err);
+      addNotification('Failed to open task for editing');
+    }
+  }, [addNotification]);
+
+  if (isLoading) {
+    return (
+      <ErrorBoundary>
+        <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'} flex items-center justify-center`}>
+          <LoadingState message="Loading your tasks..." />
+        </div>
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary>
       <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-50'}`}>
         <Header />
         <Notifications />
+        
+        {error && (
+          <ErrorAlert error={error} onDismiss={clearError} />
+        )}
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Statistics tasks={tasks} />
@@ -167,7 +288,7 @@ export default function Home() {
                 setEditingTask(null);
                 setIsModalOpen(true);
               }}
-              className="mt-4 w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-medium"
+              className="mt-4 w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-medium transition-colors"
             >
               <Plus className="w-5 h-5" />
               Add New Task
@@ -179,7 +300,11 @@ export default function Home() {
             {filteredTasks.length === 0 ? (
               <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg">
                 <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">No tasks found. Create your first task!</p>
+                <p className="text-gray-500">
+                  {searchQuery || filterPriority !== 'all' || filterCategory !== 'all'
+                    ? 'No tasks match your filters'
+                    : 'No tasks found. Create your first task!'}
+                </p>
               </div>
             ) : (
               filteredTasks.map(task => (
@@ -211,4 +336,4 @@ export default function Home() {
       </div>
     </ErrorBoundary>
   );
-}
+} 

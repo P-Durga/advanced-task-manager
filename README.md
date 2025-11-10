@@ -61,7 +61,6 @@ src/
 ├── reducers/         # State Reducers
 ├── hoc/              # Higher-Order Components
 └── lib/              # Utilities
-
 ## 🚀 Getting Started
 
 ### Prerequisites

@@ -1,0 +1,10 @@
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+vercel
+
+# Or deploy via web:
+# 1. Go to vercel.com
+# 2. Import your GitHub repository
+# 3. Click Deploy

@@ -8,13 +8,16 @@ export const useLocalStorage = (key, initialValue) => {
       const item = window.localStorage.getItem(key);
       return item ? JSON.parse(item) : initialValue;
     } catch (error) {
-      console.error(error);
+      console.error(`Error reading localStorage key "${key}":`, error);
       return initialValue;
     }
   });
 
+  const [error, setError] = useState(null);
+
   const setValue = useCallback((value) => {
     try {
+      setError(null);
       const valueToStore = value instanceof Function ? value(storedValue) : value;
       setStoredValue(valueToStore);
       
@@ -23,7 +26,13 @@ export const useLocalStorage = (key, initialValue) => {
         window.dispatchEvent(new Event('local-storage'));
       }
     } catch (error) {
-      console.error(error);
+      console.error(`Error setting localStorage key "${key}":`, error);
+      setError(error.message);
+      
+      // Check if quota exceeded
+      if (error.name === 'QuotaExceededError') {
+        console.warn('localStorage quota exceeded. Consider clearing old data.');
+      }
     }
   }, [key, storedValue]);
 
@@ -33,13 +42,19 @@ export const useLocalStorage = (key, initialValue) => {
         const item = window.localStorage.getItem(key);
         if (item) setStoredValue(JSON.parse(item));
       } catch (error) {
-        console.error(error);
+        console.error(`Error syncing localStorage key "${key}":`, error);
+        setError(error.message);
       }
     };
 
     window.addEventListener('local-storage', handleStorageChange);
-    return () => window.removeEventListener('local-storage', handleStorageChange);
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('local-storage', handleStorageChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, [key]);
 
-  return [storedValue, setValue];
+  return [storedValue, setValue, error];
 };

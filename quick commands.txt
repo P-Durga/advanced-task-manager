@@ -1,0 +1,16 @@
+# Development
+npm run dev          # Start dev server
+npm run build        # Build for production
+npm run start        # Start production server
+npm run lint         # Run ESLint
+
+# Git
+git status           # Check changes
+git add .            # Stage all changes
+git commit -m "msg"  # Commit with message
+git push             # Push to remote
+git pull             # Pull from remote
+
+# Vercel
+vercel               # Deploy to Vercel
+vercel --prod        # Deploy to production
